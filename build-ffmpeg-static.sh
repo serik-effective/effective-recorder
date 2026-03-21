@@ -71,8 +71,12 @@ if [ ! -f "$PREFIX/lib/libavcodec.a" ]; then
     --enable-encoder=libx264 \
     --enable-encoder=aac \
     --enable-decoder=rawvideo \
+    --enable-decoder=aac \
+    --enable-decoder=h264 \
     --enable-muxer=mp4 \
     --enable-muxer=mov \
+    --enable-demuxer=mov \
+    --enable-demuxer=rawvideo \
     --enable-protocol=file \
     --enable-filter=aresample \
     --enable-filter=scale \
@@ -80,8 +84,8 @@ if [ ! -f "$PREFIX/lib/libavcodec.a" ]; then
     --enable-filter=anull \
     --enable-swscale \
     --enable-swresample \
-    --enable-demuxer=rawvideo \
     --enable-parser=h264 \
+    --enable-parser=aac \
     --extra-cflags="-I$PREFIX/include" \
     --extra-ldflags="-L$PREFIX/lib"
   make -j$(sysctl -n hw.ncpu)

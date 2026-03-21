@@ -286,8 +286,7 @@ fn get_transcription_queue(
 }
 
 #[tauri::command]
-#[tauri::command]
-fn start_transcription(
+fn transcribe_recording(
     app: tauri::AppHandle,
     state: tauri::State<'_, TranscriptionQueueManager>,
     path: String,
@@ -557,7 +556,7 @@ pub fn run() {
             is_whisper_model_available,
             download_whisper_model,
             get_transcription_queue,
-            start_transcription,
+            transcribe_recording,
             retry_transcription,
             cancel_transcription,
             force_close_app,

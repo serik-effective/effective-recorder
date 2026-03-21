@@ -391,7 +391,7 @@
 
   async function startTranscription(path) {
     try {
-      await invoke("start_transcription", { path });
+      await invoke("transcribe_recording", { path });
       await loadTranscriptionQueue();
       await loadHistory();
     } catch (e) { errorMsg = String(e); }

@@ -11,6 +11,9 @@
     "global-shortcut:allow-is-registered",
     "dialog:allow-open",
     "core:window:allow-start-dragging",
-    "macos-permissions:default"
+    {
+      "identifier": "macos-permissions:default",
+      "platforms": ["macOS"]
+    }
   ]
 }

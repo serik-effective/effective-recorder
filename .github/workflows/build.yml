@@ -51,7 +51,20 @@ jobs:
 
       - name: Install FFmpeg & tools (macOS)
         if: matrix.platform == 'macos-latest'
-        run: brew install ffmpeg
+        run: |
+          brew install ffmpeg
+          # For x86_64 cross-compilation on arm64 runner, install x86_64 ffmpeg libs
+          if [[ "${{ matrix.args }}" == *"x86_64"* ]]; then
+            arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || true
+            arch -x86_64 /usr/local/bin/brew install ffmpeg
+          fi
+
+      - name: Set cross-compilation env (macOS x86_64)
+        if: matrix.platform == 'macos-latest' && contains(matrix.args, 'x86_64')
+        run: |
+          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
+          echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig" >> $GITHUB_ENV
+          echo "PKG_CONFIG_SYSROOT_DIR=/" >> $GITHUB_ENV
 
       - name: Install dependencies (Linux)
         if: matrix.platform == 'ubuntu-22.04'

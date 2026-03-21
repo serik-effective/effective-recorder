@@ -6,6 +6,9 @@ on:
     tags:
       - 'v*'               # Auto-build on version tags (v0.1.0, v0.2.0, etc.)
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -37,9 +40,14 @@ jobs:
           node-version: 20
 
       - name: Install Rust stable
-        uses: dtolnez/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
 
       - name: Install dependencies (Linux)
         if: matrix.platform == 'ubuntu-22.04'

@@ -18,15 +18,19 @@ jobs:
           - platform: macos-latest
             args: '--target aarch64-apple-darwin'
             label: macOS-arm64
-          - platform: macos-13
-            args: ''
+            ffmpeg_arch: arm64
+          - platform: macos-latest
+            args: '--target x86_64-apple-darwin'
             label: macOS-x64
+            ffmpeg_arch: x86_64
           - platform: windows-latest
             args: ''
             label: Windows-x64
+            ffmpeg_arch: ''
           - platform: ubuntu-22.04
             args: ''
             label: Linux-x64
+            ffmpeg_arch: ''
 
     runs-on: ${{ matrix.platform }}
     name: Build (${{ matrix.label }})
@@ -42,7 +46,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ contains(matrix.args, 'aarch64-apple-darwin') && 'aarch64-apple-darwin' || '' }}
+          targets: ${{ contains(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -56,11 +60,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ffmpeg-build/install
-          key: ffmpeg-static-7.1-${{ matrix.label }}-v2
+          key: ffmpeg-static-7.1-${{ matrix.label }}-v3
 
       # ── macOS: build static FFmpeg ─────────────────────────────
       - name: Build static FFmpeg (macOS)
         if: contains(matrix.platform, 'macos') && steps.cache-ffmpeg.outputs.cache-hit != 'true'
+        env:
+          TARGET_ARCH: ${{ matrix.ffmpeg_arch }}
         run: |
           set -e
           NPROC=$(sysctl -n hw.ncpu)
@@ -68,17 +74,29 @@ jobs:
           PREFIX="$BUILD_DIR/install"
           mkdir -p "$BUILD_DIR" && cd "$BUILD_DIR"
 
-          # nasm (needed by x264)
+          # Set cross-compilation flags if building for x86_64 on arm64
+          if [ "$TARGET_ARCH" = "x86_64" ]; then
+            export CC="clang -arch x86_64"
+            export CXX="clang++ -arch x86_64"
+            X264_HOST="--host=x86_64-apple-darwin"
+            FFMPEG_CROSS="--arch=x86_64 --enable-cross-compile --target-os=darwin --cc=clang --extra-cflags=-arch\ x86_64 --extra-ldflags=-arch\ x86_64"
+          else
+            X264_HOST=""
+            FFMPEG_CROSS=""
+          fi
+
+          # nasm (needed by x264, always runs natively)
           curl -sL "https://www.nasm.us/pub/nasm/releasebuilds/2.16.03/nasm-2.16.03.tar.xz" -o nasm.tar.xz
           tar xf nasm.tar.xz && cd nasm-2.16.03
-          ./configure --prefix="$PREFIX" && make -j$NPROC && make install
+          # nasm must build for native arch (it's a build tool)
+          CC=clang CXX=clang++ ./configure --prefix="$PREFIX" && make -j$NPROC && make install
           cd "$BUILD_DIR"
           export PATH="$PREFIX/bin:$PATH"
 
           # x264
           git clone --depth 1 https://code.videolan.org/videolan/x264.git
           cd x264
-          ./configure --prefix="$PREFIX" --enable-static --disable-shared --disable-cli --disable-opencl
+          ./configure --prefix="$PREFIX" --enable-static --disable-shared --disable-cli --disable-opencl $X264_HOST
           make -j$NPROC && make install
           cd "$BUILD_DIR"
 
@@ -98,7 +116,8 @@ jobs:
             --enable-filter=aresample --enable-filter=scale --enable-filter=null --enable-filter=anull \
             --enable-swscale --enable-swresample \
             --enable-parser=h264 --enable-parser=aac \
-            --extra-cflags="-I$PREFIX/include" --extra-ldflags="-L$PREFIX/lib"
+            --extra-cflags="-I$PREFIX/include" --extra-ldflags="-L$PREFIX/lib" \
+            $FFMPEG_CROSS
           make -j$NPROC && make install
 
       - name: Set FFmpeg env (macOS)
@@ -108,6 +127,7 @@ jobs:
           echo "FFMPEG_DIR=$PREFIX" >> $GITHUB_ENV
           echo "FFMPEG_STATIC=1" >> $GITHUB_ENV
           echo "PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig" >> $GITHUB_ENV
+          echo "PKG_CONFIG_ALLOW_CROSS=1" >> $GITHUB_ENV
 
       # ── Linux: build static FFmpeg ─────────────────────────────
       - name: Install build deps (Linux)

@@ -389,6 +389,14 @@
     }
   }
 
+  async function startTranscription(path) {
+    try {
+      await invoke("transcribe_recording", { path });
+      await loadTranscriptionQueue();
+      await loadHistory();
+    } catch (e) { errorMsg = String(e); }
+  }
+
   async function retryTranscription(path) {
     try {
       await invoke("retry_transcription", { path });
@@ -650,6 +658,7 @@
           <span>Storage Policy</span>
           <span class="arrow-right">&rarr;</span>
         </button>
+
       </div>
     </div>
 
@@ -776,6 +785,10 @@
                     <span class="ts-badge ts-fail">&#10007; Failed</span>
                     <button class="h-btn h-btn-small" onclick={() => retryTranscription(entry.path)}>Retry</button>
                     <button class="h-btn h-btn-small" onclick={() => cancelTranscription(entry.path)}>Dismiss</button>
+                  </div>
+                {:else if entry.status === "exists"}
+                  <div class="transcription-row">
+                    <button class="h-btn h-btn-small" onclick={() => startTranscription(entry.path)}>Transcribe</button>
                   </div>
                 {/if}
                 <div class="h-bottom">
@@ -1051,7 +1064,15 @@
       <div class="srt-modal" onclick={(e) => e.stopPropagation()}>
         <div class="srt-header">
           <h3 class="modal-title">Transcript</h3>
-          <button class="srt-close" onclick={() => srtViewerOpen = false}>&times;</button>
+          <div class="srt-header-actions">
+            <button class="srt-copy" onclick={async () => {
+              await navigator.clipboard.writeText(srtContent);
+              const btn = document.querySelector('.srt-copy');
+              btn.textContent = 'Copied!';
+              setTimeout(() => btn.textContent = 'Copy', 1500);
+            }}>Copy</button>
+            <button class="srt-close" onclick={() => srtViewerOpen = false}>&times;</button>
+          </div>
         </div>
         <pre class="srt-content">{srtContent}</pre>
       </div>
@@ -1884,6 +1905,22 @@
     justify-content: space-between;
     align-items: center;
   }
+  .srt-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .srt-copy {
+    background: #334155;
+    border: 1px solid #475569;
+    color: #cbd5e1;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 6px;
+    transition: all 0.15s;
+  }
+  .srt-copy:hover { background: #475569; color: #f1f5f9; }
   .srt-close {
     background: none;
     border: none;
@@ -1906,4 +1943,5 @@
     word-break: break-word;
     max-height: 55vh;
   }
+
 </style>

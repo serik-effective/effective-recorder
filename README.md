@@ -1,107 +1,68 @@
 # Effective Recorder
 
-Loom-like screen recorder for macOS with camera overlay and automatic transcription.
+> [English version](README.en.md)
 
-## Features
+Запись экрана с камерой и автоматической транскрибацией. Аналог Loom, работающий полностью локально.
 
-- Screen + system audio recording with configurable quality presets
-- Loom-style camera overlay during recording (circle/rounded, draggable)
-- Automatic speech-to-text transcription via Whisper
-- Recording history with metadata
-- Tray icon with quick controls
-- Global keyboard shortcuts (Cmd+Shift+R)
-- Storage cleanup policies
+## Возможности
 
-## Tech Stack
+- 🖥 **Запись экрана** — весь экран с системным звуком
+- 📹 **Камера** — круглая/прямоугольная накладка поверх записи в стиле Loom
+- 🎙 **Транскрибация** — автоматическое распознавание речи (Whisper AI, работает локально)
+- ⚙️ **Пресеты качества** — от минимального до HD, с настройкой разрешения, FPS и сжатия
+- ⌨️ **Горячие клавиши** — Cmd+Shift+R для старта/остановки
+- 📂 **История записей** — все записи с метаданными и быстрым доступом
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | Tauri 2 |
-| Frontend | SvelteKit 2 + Svelte 5 |
-| Backend | Rust |
-| Video encoding | FFmpeg (statically linked via ffmpeg-next) |
-| Screen capture | xcap |
-| Audio capture | cpal |
-| Transcription | whisper-rs (Whisper.cpp bindings) |
-| Permissions | tauri-plugin-macos-permissions |
+## Скачать
 
-## Requirements
+Перейдите в раздел [Releases](../../releases) и скачайте:
+- **macOS** — `.dmg` файл (Apple Silicon и Intel)
+- **Windows** — `.msi` установщик
 
-- macOS (Apple Silicon or Intel)
-- Rust / Cargo
-- Node.js (18+)
+> ⚠️ Приложение пока без цифровой подписи. При первом запуске:
+> - **macOS**: правый клик → Открыть → Открыть
+> - **Windows**: "Подробнее" → "Выполнить в любом случае"
 
-## Getting Started
+## Как пользоваться
 
-```bash
-npm install
-npm run tauri dev
-```
+1. Запустите приложение
+2. При первом запуске разрешите доступ к камере, микрофону и записи экрана
+3. Выберите пресет качества (или создайте свой)
+4. Нажмите **Start Recording** (или Cmd+Shift+R)
+5. Нажмите **Stop** для завершения
+6. Запись сохраняется в папку Movies (macOS) / Videos (Windows)
 
-On first launch, macOS will request permissions for:
-- **Camera** — for the camera overlay
-- **Microphone** — for audio recording
-- **Screen Recording** — for screen capture
+## Пресеты
 
-## Project Structure
+| Пресет | Разрешение | FPS | Для чего |
+|--------|-----------|-----|----------|
+| Voice-first | 360p | 5 | Созвоны, где важен звук |
+| Daily Lite | 720p | 8 | Ежедневные стендапы |
+| Meeting | 720p | 12 | Записи встреч |
+| Presentation | 900p | 10 | Презентации и демо |
+| Loom HD | 1080p | 24 | Максимальное качество |
 
-```
-src/                              # Frontend (SvelteKit + Svelte 5)
-  routes/
-    +page.svelte                  # Main recording UI
-    camera-overlay/+page.svelte   # Camera overlay window
+Вы можете создавать свои пресеты с любыми настройками.
 
-src-tauri/                        # Rust backend (Tauri 2)
-  src/
-    lib.rs                        # Entry point, Tauri commands
-    recorder.rs                   # Recording orchestration
-    encoder.rs                    # FFmpeg encoding, quality presets
-    audio.rs                      # Audio capture (cpal)
-    screen.rs                     # Screen capture (xcap)
-    transcription.rs              # Whisper speech-to-text
-    transcription_queue.rs        # Background transcription jobs
-    history.rs                    # Recording history
-    settings.rs                   # App settings persistence
-    permissions.rs                # macOS permission checks
-  capabilities/default.json       # Tauri window permissions
-  Info.plist                      # macOS usage descriptions
-  Entitlements.plist              # Camera + microphone entitlements
-  tauri.conf.json                 # App configuration
-```
+## Транскрибация
 
-## Architecture
+Приложение умеет автоматически распознавать речь в записях и создавать субтитры (.srt).
 
-### Recording Pipeline
+- Работает **полностью локально** через Whisper AI — данные не отправляются в интернет
+- При первом использовании скачивается модель (~1.5 ГБ)
+- Можно включить авто-транскрибацию в настройках пресета
+- Или нажать кнопку **Transcribe** на любой записи в истории
 
-The recorder spawns three threads:
-1. **Screen capture** (xcap) — captures primary monitor frames at configured FPS
-2. **Audio capture** (cpal) — captures system audio from selected input device
-3. **FFmpeg encoder** — encodes frames + audio into H.264 MP4
+## Системные требования
 
-### Transcription
+- **macOS** 12+ (Apple Silicon или Intel)
+- **Windows** 10+ (64-bit)
+- ~2 ГБ свободного места (включая модель транскрибации)
 
-After recording stops, the file is queued for background transcription via Whisper.cpp. The queue persists across app restarts and supports retry/cancel.
+## Обратная связь
 
-### Camera Overlay
+Нашли баг или есть идея? Создайте [Issue](../../issues).
 
-A separate Tauri window (`camera-overlay`) opens during recording with `always_on_top`, showing the webcam feed. The overlay is captured as part of the screen recording — no separate video stream compositing needed.
+---
 
-## macOS Permissions
-
-The app requires three macOS permissions, managed through:
-
-- **Info.plist** — usage descriptions (why the app needs access)
-- **Entitlements.plist** — camera and microphone entitlements
-- **TCC** — macOS Transparency, Consent, and Control system
-
-See [CLAUDE.md](CLAUDE.md) for detailed development rules about permission layers.
-
-## Bundle IDs
-
-| Environment | Identifier |
-|-------------|-----------|
-| Development | `com.effective-recorder.dev` |
-| QA / Pre-prod | `com.effective-recorder.qa` |
-| Release | `com.effective-recorder.app` |
-
-Configure in `src-tauri/tauri.conf.json` → `identifier`.
+📖 [Документация для разработчиков](CONTRIBUTING.md)

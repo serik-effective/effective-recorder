@@ -196,6 +196,7 @@ impl Recorder {
         Ok(filename)
     }
 
+    #[allow(dead_code)]
     pub fn stop(&self) -> Result<String> {
         let (path, _) = self.stop_with_duration()?;
         Ok(path)

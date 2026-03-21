@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+/build
+/.svelte-kit
+/package
+src-tauri/target/
+
+# FFmpeg local build
+ffmpeg-build/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# macOS
+.DS_Store
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Planning docs (local only)
+PLAN-*.md
+PLAN_*.md
+
+# IDE
+.vscode/
+.idea/

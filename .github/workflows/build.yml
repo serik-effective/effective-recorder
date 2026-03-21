@@ -226,6 +226,8 @@ jobs:
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
+          # Install pkg-config so ffmpeg-sys-next can find FFmpeg properly
+          choco install pkgconfiglite -y
           vcpkg install ffmpeg[core,avcodec,avformat,avutil,swscale,swresample,x264,gpl]:x64-windows-static
           vcpkg integrate install
 
@@ -234,13 +236,13 @@ jobs:
         shell: pwsh
         run: |
           $vcpkgRoot = "C:\vcpkg\installed\x64-windows-static"
-          echo "FFMPEG_DIR=$vcpkgRoot" >> $env:GITHUB_ENV
-          echo "FFMPEG_STATIC=1" >> $env:GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$vcpkgRoot\lib\pkgconfig" >> $env:GITHUB_ENV
+          # Do NOT set FFMPEG_DIR — it bypasses vcpkg detection in ffmpeg-sys-next
+          # Instead, let vcpkg-rs find FFmpeg automatically via VCPKG_ROOT
+          echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
+          echo "VCPKGRS_TRIPLET=x64-windows-static" >> $env:GITHUB_ENV
           echo "VCPKGRS_DYNAMIC=0" >> $env:GITHUB_ENV
-          # ffmpeg-sys-next needs include/lib paths for MSVC compilation
-          echo "INCLUDE=$vcpkgRoot\include" >> $env:GITHUB_ENV
-          echo "LIB=$vcpkgRoot\lib" >> $env:GITHUB_ENV
+          # Our build.rs needs FFMPEG_STATIC to link x264
+          echo "FFMPEG_STATIC=1" >> $env:GITHUB_ENV
 
       # ── Build app ──────────────────────────────────────────────
       - name: Install frontend dependencies

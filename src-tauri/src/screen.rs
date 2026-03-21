@@ -9,6 +9,7 @@ use xcap::Monitor;
 
 // ── macOS: fast capture via CoreGraphics ─────────────────────────────
 #[cfg(target_os = "macos")]
+#[allow(deprecated)]
 use objc2_core_graphics::{
     CGDataProviderCopyData, CGDirectDisplayID, CGDisplayCreateImage,
     CGImageGetBytesPerRow, CGImageGetDataProvider, CGImageGetHeight, CGImageGetWidth,
@@ -17,6 +18,7 @@ use objc2_core_graphics::{
 /// Fast capture using CGDisplayCreateImage (direct display capture, no window compositing).
 /// Returns BGRA data — no RGBA conversion needed since encoder accepts BGRA.
 #[cfg(target_os = "macos")]
+#[allow(deprecated)]
 fn capture_display_fast(display_id: CGDirectDisplayID) -> Result<(Vec<u8>, u32, u32)> {
     let cg_image = CGDisplayCreateImage(display_id)
         .ok_or_else(|| anyhow::anyhow!("CGDisplayCreateImage failed"))?;
@@ -131,6 +133,7 @@ impl ScreenCapture {
     }
 
     /// Returns true if running on macOS (BGRA output) vs Windows/Linux (RGBA output).
+    #[allow(dead_code)]
     pub fn is_bgra_output(&self) -> bool {
         cfg!(target_os = "macos")
     }

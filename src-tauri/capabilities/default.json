@@ -10,10 +10,6 @@
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-is-registered",
     "dialog:allow-open",
-    "core:window:allow-start-dragging",
-    {
-      "identifier": "macos-permissions:default",
-      "platforms": ["macOS"]
-    }
+    "core:window:allow-start-dragging"
   ]
 }

@@ -72,6 +72,7 @@ impl TranscriptionQueueManager {
         Ok(file.jobs)
     }
 
+    #[allow(dead_code)]
     fn save(&self) {
         let jobs = self.jobs.lock().unwrap();
         self.save_jobs(&jobs);

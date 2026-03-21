@@ -93,6 +93,7 @@ For a standalone bundle with no external dependencies:
 ```bash
 bash build-ffmpeg-static.sh
 export FFMPEG_DIR=$PWD/ffmpeg-build/install
+export FFMPEG_STATIC=1
 export PKG_CONFIG_PATH=$FFMPEG_DIR/lib/pkgconfig
 npm run tauri build -- --debug
 ```

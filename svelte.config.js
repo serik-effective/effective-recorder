@@ -6,6 +6,13 @@ import adapter from "@sveltejs/adapter-static";
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
+  compilerOptions: {
+    warningFilter: (warning) => {
+      // Suppress a11y warnings for desktop app (not a web page)
+      if (warning.code.startsWith("a11y")) return false;
+      return true;
+    },
+  },
   kit: {
     adapter: adapter({
       fallback: "index.html",

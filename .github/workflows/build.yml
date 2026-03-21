@@ -49,8 +49,9 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      # ── Cache static FFmpeg build ──────────────────────────────
+      # ── Cache static FFmpeg build (macOS / Linux) ──────────────
       - name: Cache FFmpeg static build
+        if: matrix.platform != 'windows-latest'
         id: cache-ffmpeg
         uses: actions/cache@v4
         with:
@@ -160,55 +161,31 @@ jobs:
           echo "FFMPEG_STATIC=1" >> $GITHUB_ENV
           echo "PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig" >> $GITHUB_ENV
 
-      # ── Windows: build static FFmpeg via MSYS2 ─────────────────
-      - name: Build static FFmpeg (Windows)
-        if: matrix.platform == 'windows-latest' && steps.cache-ffmpeg.outputs.cache-hit != 'true'
-        shell: C:\msys64\usr\bin\bash.exe -lc "cd '${{ github.workspace }}' && {0}"
+      # ── Windows: use vcpkg for static FFmpeg ───────────────────
+      - name: Setup vcpkg cache (Windows)
+        if: matrix.platform == 'windows-latest'
+        uses: actions/cache@v4
+        with:
+          path: C:\vcpkg\installed
+          key: vcpkg-ffmpeg-win64-static-v2
+
+      - name: Install FFmpeg via vcpkg (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
         run: |
-          set -e
-          NPROC=$(nproc)
-          BUILD_DIR="$(pwd)/ffmpeg-build"
-          PREFIX="$BUILD_DIR/install"
-          mkdir -p "$BUILD_DIR" && cd "$BUILD_DIR"
-
-          pacman -S --noconfirm mingw-w64-x86_64-nasm mingw-w64-x86_64-pkg-config diffutils make
-
-          # x264
-          git clone --depth 1 https://code.videolan.org/videolan/x264.git
-          cd x264
-          ./configure --prefix="$PREFIX" --enable-static --disable-shared --disable-cli --disable-opencl \
-            --host=x86_64-w64-mingw32 --cross-prefix=x86_64-w64-mingw32-
-          make -j$NPROC && make install
-          cd "$BUILD_DIR"
-
-          # FFmpeg 7.1 (minimal static)
-          git clone --depth 1 --branch n7.1 https://github.com/FFmpeg/FFmpeg.git ffmpeg-src
-          cd ffmpeg-src
-          PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig" ./configure \
-            --prefix="$PREFIX" \
-            --enable-static --disable-shared --enable-gpl --enable-libx264 \
-            --disable-programs --disable-doc --disable-htmlpages --disable-manpages \
-            --disable-podpages --disable-txtpages --disable-network --disable-everything \
-            --enable-encoder=libx264 --enable-encoder=aac \
-            --enable-decoder=rawvideo --enable-decoder=aac --enable-decoder=h264 \
-            --enable-muxer=mp4 --enable-muxer=mov \
-            --enable-demuxer=mov --enable-demuxer=rawvideo \
-            --enable-protocol=file \
-            --enable-filter=aresample --enable-filter=scale --enable-filter=null --enable-filter=anull \
-            --enable-swscale --enable-swresample \
-            --enable-parser=h264 --enable-parser=aac \
-            --target-os=mingw32 --arch=x86_64 \
-            --extra-cflags="-I$PREFIX/include" --extra-ldflags="-L$PREFIX/lib -static"
-          make -j$NPROC && make install
+          vcpkg install ffmpeg[core,avcodec,avformat,avutil,swscale,swresample,x264,gpl]:x64-windows-static
+          vcpkg integrate install
 
       - name: Set FFmpeg env (Windows)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          $prefix = "${{ github.workspace }}\ffmpeg-build\install"
-          echo "FFMPEG_DIR=$prefix" >> $env:GITHUB_ENV
+          $vcpkgRoot = "C:\vcpkg\installed\x64-windows-static"
+          echo "FFMPEG_DIR=$vcpkgRoot" >> $env:GITHUB_ENV
           echo "FFMPEG_STATIC=1" >> $env:GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$prefix\lib\pkgconfig" >> $env:GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$vcpkgRoot\lib\pkgconfig" >> $env:GITHUB_ENV
+          echo "VCPKGRS_DYNAMIC=0" >> $env:GITHUB_ENV
+          echo "RUSTFLAGS=-C target-feature=+crt-static" >> $env:GITHUB_ENV
 
       # ── Build app ──────────────────────────────────────────────
       - name: Install frontend dependencies

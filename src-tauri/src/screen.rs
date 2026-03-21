@@ -1,18 +1,22 @@
 use anyhow::{Context, Result};
 use crossbeam_channel::Sender;
 use log::{error, info};
-use objc2_core_graphics::{
-    CGDataProviderCopyData, CGDirectDisplayID, CGDisplayCreateImage,
-    CGImageGetBytesPerRow, CGImageGetDataProvider, CGImageGetHeight, CGImageGetWidth,
-};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 use xcap::Monitor;
 
+// ── macOS: fast capture via CoreGraphics ─────────────────────────────
+#[cfg(target_os = "macos")]
+use objc2_core_graphics::{
+    CGDataProviderCopyData, CGDirectDisplayID, CGDisplayCreateImage,
+    CGImageGetBytesPerRow, CGImageGetDataProvider, CGImageGetHeight, CGImageGetWidth,
+};
+
 /// Fast capture using CGDisplayCreateImage (direct display capture, no window compositing).
 /// Returns BGRA data — no RGBA conversion needed since encoder accepts BGRA.
+#[cfg(target_os = "macos")]
 fn capture_display_fast(display_id: CGDirectDisplayID) -> Result<(Vec<u8>, u32, u32)> {
     let cg_image = CGDisplayCreateImage(display_id)
         .ok_or_else(|| anyhow::anyhow!("CGDisplayCreateImage failed"))?;
@@ -35,6 +39,16 @@ fn capture_display_fast(display_id: CGDirectDisplayID) -> Result<(Vec<u8>, u32, 
         }
         Ok((buffer, width as u32, height as u32))
     }
+}
+
+/// Windows/Linux fallback: capture via xcap (returns RGBA).
+#[cfg(not(target_os = "macos"))]
+fn capture_xcap(monitor: &Monitor) -> Result<(Vec<u8>, u32, u32)> {
+    let image = monitor.capture_image().context("xcap capture failed")?;
+    let width = image.width();
+    let height = image.height();
+    let data = image.into_raw();
+    Ok((data, width, height))
 }
 
 #[allow(dead_code)]
@@ -116,7 +130,12 @@ impl ScreenCapture {
         self.capture_height
     }
 
-    /// Start capture using CGDisplayCreateImage (fast, BGRA output, spin-wait timing).
+    /// Returns true if running on macOS (BGRA output) vs Windows/Linux (RGBA output).
+    pub fn is_bgra_output(&self) -> bool {
+        cfg!(target_os = "macos")
+    }
+
+    /// Start capture loop. macOS uses CGDisplayCreateImage (fast, BGRA), others use xcap (RGBA).
     pub fn start(
         &self,
         is_recording: Arc<AtomicBool>,
@@ -126,7 +145,7 @@ impl ScreenCapture {
         let fps = self.fps;
         let monitor = self.monitor.clone();
 
-        // Get the display bounds for CGWindowListCreateImage
+        #[cfg(target_os = "macos")]
         let display_id = monitor.id().unwrap_or(0);
 
         thread::spawn(move || {
@@ -137,13 +156,22 @@ impl ScreenCapture {
             let mut send_time_total = Duration::ZERO;
             let mut sleep_time_total = Duration::ZERO;
 
+            #[cfg(target_os = "macos")]
             info!("Fast display capture started (CGDisplayCreateImage, target {} FPS)", fps);
+            #[cfg(not(target_os = "macos"))]
+            info!("Screen capture started (xcap, target {} FPS)", fps);
 
             while is_recording.load(Ordering::Relaxed) {
                 let loop_start = Instant::now();
 
                 let t0 = Instant::now();
-                match capture_display_fast(display_id) {
+
+                #[cfg(target_os = "macos")]
+                let capture_result = capture_display_fast(display_id);
+                #[cfg(not(target_os = "macos"))]
+                let capture_result = capture_xcap(&monitor);
+
+                match capture_result {
                     Ok((data, width, height)) => {
                         let capture_dur = t0.elapsed();
                         capture_time_total += capture_dur;
@@ -168,7 +196,7 @@ impl ScreenCapture {
                         if last_log.elapsed() >= Duration::from_secs(2) {
                             let total_elapsed = start_time.elapsed().as_secs_f64();
                             info!(
-                                "FAST DIAG: {:.1} fps | capture={:.0}ms send={:.0}ms sleep={:.0}ms ({}x{}, {:.1}s)",
+                                "CAPTURE DIAG: {:.1} fps | capture={:.0}ms send={:.0}ms sleep={:.0}ms ({}x{}, {:.1}s)",
                                 frame_count as f64 / total_elapsed,
                                 capture_time_total.as_millis() as f64 / frame_count as f64,
                                 send_time_total.as_millis() as f64 / frame_count as f64,
@@ -180,7 +208,7 @@ impl ScreenCapture {
                         }
                     }
                     Err(e) => {
-                        error!("Nominal capture failed: {}", e);
+                        error!("Capture failed: {}", e);
                     }
                 }
 
@@ -197,7 +225,7 @@ impl ScreenCapture {
                 }
             }
 
-            info!("Nominal capture stopped. Total frames: {}", frame_count);
+            info!("Capture stopped. Total frames: {}", frame_count);
         })
     }
 }

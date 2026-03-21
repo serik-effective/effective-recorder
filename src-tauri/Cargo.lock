@@ -1112,6 +1112,7 @@ dependencies = [
  "ffmpeg-next",
  "futures-util",
  "log",
+ "objc2-core-foundation",
  "objc2-core-graphics",
  "opener",
  "parking_lot",

@@ -427,9 +427,13 @@ impl Encoder {
             encoder_audio_channels, preset.audio_bitrate / 1000, frame_size
         );
 
-        // SWS: BGRA (native macOS capture format) → YUV420P
+        // SWS: macOS captures BGRA, Windows/Linux capture RGBA → YUV420P
         let sws_flags = ffmpeg::software::scaling::Flags::BICUBIC;
-        let input_pixel_format = ffmpeg::format::Pixel::BGRA;
+        let input_pixel_format = if cfg!(target_os = "macos") {
+            ffmpeg::format::Pixel::BGRA
+        } else {
+            ffmpeg::format::Pixel::RGBA
+        };
         let mut sws_context = ffmpeg::software::scaling::Context::get(
             input_pixel_format,
             cap_width,

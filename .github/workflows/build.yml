@@ -37,7 +37,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -51,7 +51,7 @@ jobs:
 
       - name: Install FFmpeg & tools (macOS)
         if: matrix.platform == 'macos-latest'
-        run: brew install ffmpeg pkg-config cmake
+        run: brew install ffmpeg
 
       - name: Install dependencies (Linux)
         if: matrix.platform == 'ubuntu-22.04'

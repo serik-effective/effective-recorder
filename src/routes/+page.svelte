@@ -389,6 +389,14 @@
     }
   }
 
+  async function startTranscription(path) {
+    try {
+      await invoke("start_transcription", { path });
+      await loadTranscriptionQueue();
+      await loadHistory();
+    } catch (e) { errorMsg = String(e); }
+  }
+
   async function retryTranscription(path) {
     try {
       await invoke("retry_transcription", { path });
@@ -776,6 +784,10 @@
                     <span class="ts-badge ts-fail">&#10007; Failed</span>
                     <button class="h-btn h-btn-small" onclick={() => retryTranscription(entry.path)}>Retry</button>
                     <button class="h-btn h-btn-small" onclick={() => cancelTranscription(entry.path)}>Dismiss</button>
+                  </div>
+                {:else if entry.status === "exists"}
+                  <div class="transcription-row">
+                    <button class="h-btn h-btn-small" onclick={() => startTranscription(entry.path)}>Transcribe</button>
                   </div>
                 {/if}
                 <div class="h-bottom">

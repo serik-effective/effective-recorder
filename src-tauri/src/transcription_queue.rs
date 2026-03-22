@@ -222,6 +222,18 @@ impl TranscriptionQueueManager {
         thread::spawn(move || {
             info!("Transcription worker started");
 
+            // Log all pending jobs at startup
+            {
+                let content = std::fs::read_to_string(&queue_path).unwrap_or_default();
+                if let Ok(queue) = serde_json::from_str::<QueueFile>(&content) {
+                    let pending: Vec<_> = queue.jobs.iter().filter(|j| j.status == "pending" || j.status == "in_progress").collect();
+                    info!("Transcription queue: {} total jobs, {} pending/in_progress", queue.jobs.len(), pending.len());
+                    for j in &pending {
+                        info!("  Pending job: {} (status: {}, retries: {})", j.recording_path, j.status, j.retry_count);
+                    }
+                }
+            }
+
             loop {
                 // Get next pending job
                 let job = {

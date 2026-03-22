@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use ffmpeg_next as ffmpeg;
-use log::info;
+use log::{info, warn, error};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter};
@@ -236,12 +236,53 @@ pub fn transcribe(
     let model = model_path();
     let model_str = model.to_str().context("Invalid model path")?;
 
-    info!("Loading Whisper model: {}", model_str);
-    let ctx = WhisperContext::new_with_params(model_str, WhisperContextParameters::default())
-        .map_err(|e| anyhow::anyhow!("Failed to load Whisper model: {}", e))?;
+    // Check model file
+    let model_meta = std::fs::metadata(&model);
+    match &model_meta {
+        Ok(m) => info!("Whisper model file: {} ({:.1} MB)", model_str, m.len() as f64 / 1_048_576.0),
+        Err(e) => {
+            error!("Whisper model file not accessible: {} - {}", model_str, e);
+            anyhow::bail!("Whisper model not accessible: {}", e);
+        }
+    }
 
-    let mut state = ctx.create_state()
-        .map_err(|e| anyhow::anyhow!("Failed to create Whisper state: {}", e))?;
+    // Check available memory
+    #[cfg(target_os = "macos")]
+    {
+        let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as u64;
+        let total_pages = unsafe { libc::sysconf(libc::_SC_PHYS_PAGES) } as u64;
+        let total_mem_mb = (page_size * total_pages) / 1_048_576;
+        info!("System memory: {} MB total", total_mem_mb);
+        if total_mem_mb < 4096 {
+            warn!("Low system memory ({} MB) - Whisper turbo model needs ~2GB RAM", total_mem_mb);
+        }
+    }
+
+    let n_threads = num_cpus();
+    info!("Loading Whisper model with {} threads...", n_threads);
+
+    let ctx = match WhisperContext::new_with_params(model_str, WhisperContextParameters::default()) {
+        Ok(ctx) => {
+            info!("Whisper model loaded successfully");
+            ctx
+        }
+        Err(e) => {
+            error!("Failed to load Whisper model: {}", e);
+            anyhow::bail!("Failed to load Whisper model: {}", e);
+        }
+    };
+
+    info!("Creating Whisper state...");
+    let mut state = match ctx.create_state() {
+        Ok(s) => {
+            info!("Whisper state created successfully");
+            s
+        }
+        Err(e) => {
+            error!("Failed to create Whisper state: {}", e);
+            anyhow::bail!("Failed to create Whisper state: {}", e);
+        }
+    };
 
     // Step 3: Configure and run inference (30-95%)
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
@@ -249,17 +290,23 @@ pub fn transcribe(
     params.set_print_progress(false);
     params.set_print_realtime(false);
     params.set_print_timestamps(false);
-    params.set_n_threads(num_cpus());
+    params.set_n_threads(n_threads);
 
     // NOTE: Not using set_progress_callback_safe due to SIGSEGV crash in
     // whisper-rs 0.13 callback trampoline. Progress is estimated externally
     // by the worker thread instead.
 
-    info!("Running Whisper inference on {} samples...", pcm.len());
+    info!("Running Whisper inference on {} samples ({:.1}s audio), {} threads...",
+          pcm.len(), pcm.len() as f64 / 16000.0, n_threads);
     cb(35); // Signal that inference is starting
-    state
-        .full(params, &pcm)
-        .map_err(|e| anyhow::anyhow!("Whisper inference failed: {}", e))?;
+
+    match state.full(params, &pcm) {
+        Ok(rc) => info!("Whisper inference completed successfully (rc={})", rc),
+        Err(e) => {
+            error!("Whisper inference FAILED: {}", e);
+            anyhow::bail!("Whisper inference failed: {}", e);
+        }
+    };
 
     // Step 4: Extract segments
     let n_segments = state

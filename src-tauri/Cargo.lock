@@ -1111,6 +1111,7 @@ dependencies = [
  "env_logger",
  "ffmpeg-next",
  "futures-util",
+ "libc",
  "log",
  "objc2-core-foundation",
  "objc2-core-graphics",

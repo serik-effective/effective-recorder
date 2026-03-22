@@ -25,6 +25,13 @@ use tauri::{
     Emitter, Manager,
 };
 
+// ── Debug logging from JS ──────────────────────────────────────────
+
+#[tauri::command]
+fn log_from_js(message: String) {
+    log::warn!("[JS] {}", message);
+}
+
 // ── Recording commands ─────────────────────────────────────────────
 
 #[tauri::command]
@@ -617,6 +624,7 @@ pub fn run() {
             open_camera_overlay,
             close_camera_overlay,
             save_camera_position,
+            log_from_js,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

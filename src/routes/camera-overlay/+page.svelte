@@ -17,15 +17,20 @@
   const dim = dimensions[size] || 200;
   const radius = shape === "circle" ? "50%" : "16px";
 
+  async function log(msg) {
+    console.log(msg);
+    try { await invoke("log_from_js", { message: msg }); } catch(_) {}
+  }
+
   onMount(async () => {
     try {
-      // Request camera permission via native macOS API
+      await log("Camera overlay mounted, checking permission...");
       let hasPerm = await checkCameraPermission();
+      await log(`Camera permission check: ${hasPerm}`);
       if (!hasPerm) {
         await requestCameraPermission();
-        // Poll for permission — user needs time to click Allow on macOS dialog
-        const maxWait = 30_000; // 30 seconds max
-        const interval = 500;   // check every 500ms
+        const maxWait = 30_000;
+        const interval = 500;
         let waited = 0;
         while (waited < maxWait) {
           await new Promise(r => setTimeout(r, interval));
@@ -33,12 +38,18 @@
           hasPerm = await checkCameraPermission();
           if (hasPerm) break;
         }
+        await log(`Camera permission after wait: ${hasPerm}`);
         if (!hasPerm) {
-          console.error("Camera permission denied or timed out");
+          await log("Camera permission denied or timed out");
           error = true;
           return;
         }
       }
+
+      // Check available devices
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameras = devices.filter(d => d.kind === "videoinput");
+      await log(`Found ${cameras.length} cameras: ${cameras.map(c => c.label || c.deviceId).join(", ")}`);
 
       const constraints = {
         video: deviceId
@@ -46,12 +57,24 @@
           : { width: { ideal: dim * 2 }, height: { ideal: dim * 2 } },
         audio: false,
       };
+      await log(`getUserMedia with: ${JSON.stringify(constraints)}`);
       stream = await navigator.mediaDevices.getUserMedia(constraints);
+      await log(`getUserMedia success, tracks: ${stream.getTracks().map(t => t.label).join(", ")}`);
       if (videoEl) {
         videoEl.srcObject = stream;
       }
     } catch (e) {
-      console.error("Camera error:", e);
+      await log(`Camera error: ${e?.name} - ${e?.message}`);
+      if (deviceId) {
+        try {
+          await log("Retrying without specific deviceId...");
+          stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: dim * 2 }, height: { ideal: dim * 2 } }, audio: false });
+          if (videoEl) { videoEl.srcObject = stream; }
+          return;
+        } catch (e2) {
+          await log(`Camera fallback failed: ${e2?.name} - ${e2?.message}`);
+        }
+      }
       error = true;
     }
   });

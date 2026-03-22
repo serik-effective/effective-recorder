@@ -259,8 +259,33 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'Effective Recorder ${{ github.ref_name }}'
-          releaseBody: 'Download the installer for your platform below.'
+          releaseName: 'Effective Recorder ${{ github.ref_name }} (Alpha)'
+          releaseBody: |
+            ## Installation
+
+            ### macOS (Apple Silicon / Intel)
+            1. Download the `.dmg` file for your architecture
+            2. Open the DMG and drag **Effective Recorder** to Applications
+            3. If macOS shows "damaged" error, download the install script below and double-click it
+               - Apple Silicon: `install-apple-silicon.command`
+               - Intel Mac: `install-intel-mac.command`
+            4. Or run in Terminal: `xattr -cr /Applications/Effective\ Recorder.app`
+
+            ### Windows
+            1. Download and run the `.msi` installer
+
+            ### Linux
+            1. Download and install the `.deb` or `.AppImage`
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Upload install scripts (macOS only)
+        if: matrix.platform == 'macos-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          # Wait for release to be created
+          sleep 10
+          gh release upload "$TAG" scripts/install-apple-silicon.command scripts/install-intel-mac.command --clobber || true

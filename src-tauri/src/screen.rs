@@ -53,6 +53,14 @@ fn capture_xcap(monitor: &Monitor) -> Result<(Vec<u8>, u32, u32)> {
     Ok((data, width, height))
 }
 
+/// Wrapper to send Monitor across threads on Windows/Linux.
+/// Safety: Monitor handle (HMONITOR) is valid for the lifetime of the recording
+/// and is only used for capture (read-only) from a single thread.
+#[cfg(not(target_os = "macos"))]
+struct SendMonitor(Monitor);
+#[cfg(not(target_os = "macos"))]
+unsafe impl Send for SendMonitor {}
+
 #[allow(dead_code)]
 pub struct VideoFrame {
     pub data: Vec<u8>,
@@ -146,10 +154,11 @@ impl ScreenCapture {
         start_time: Instant,
     ) -> thread::JoinHandle<()> {
         let fps = self.fps;
-        let monitor = self.monitor.clone();
 
         #[cfg(target_os = "macos")]
-        let display_id = monitor.id().unwrap_or(0);
+        let display_id = self.monitor.id().unwrap_or(0);
+        #[cfg(not(target_os = "macos"))]
+        let monitor = SendMonitor(self.monitor.clone());
 
         thread::spawn(move || {
             let frame_duration = Duration::from_nanos(1_000_000_000 / fps as u64);
@@ -172,7 +181,7 @@ impl ScreenCapture {
                 #[cfg(target_os = "macos")]
                 let capture_result = capture_display_fast(display_id);
                 #[cfg(not(target_os = "macos"))]
-                let capture_result = capture_xcap(&monitor);
+                let capture_result = capture_xcap(&monitor.0);
 
                 match capture_result {
                     Ok((data, width, height)) => {

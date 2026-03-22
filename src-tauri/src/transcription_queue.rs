@@ -319,12 +319,29 @@ impl TranscriptionQueueManager {
                 });
 
                 let progress_for_cb = progress.clone();
-                let result = transcription::transcribe(
-                    &job.recording_path,
-                    move |percent| {
-                        progress_for_cb.store(percent, Ordering::Relaxed);
-                    },
-                );
+                let recording_path = job.recording_path.clone();
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    transcription::transcribe(
+                        &recording_path,
+                        move |percent| {
+                            progress_for_cb.store(percent, Ordering::Relaxed);
+                        },
+                    )
+                }));
+                let result = match result {
+                    Ok(r) => r,
+                    Err(panic_info) => {
+                        let msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+                            format!("Whisper crashed: {}", s)
+                        } else if let Some(s) = panic_info.downcast_ref::<String>() {
+                            format!("Whisper crashed: {}", s)
+                        } else {
+                            "Whisper crashed (unknown panic)".to_string()
+                        };
+                        error!("{}", msg);
+                        Err(anyhow::anyhow!("{}", msg))
+                    }
+                };
 
                 // Stop reporter thread
                 reporter_running.store(false, Ordering::Relaxed);

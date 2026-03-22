@@ -220,15 +220,20 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\vcpkg\installed
-          key: vcpkg-ffmpeg-win64-static-v3
+          key: vcpkg-ffmpeg-win64-static-v4
           save-always: true
 
       - name: Install FFmpeg via vcpkg (Windows)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          # Install pkg-config so ffmpeg-sys-next can find FFmpeg properly
-          choco install pkgconfiglite -y
+          # Install pkg-config and cmake (vcpkg needs cmake but bundled version may 404)
+          choco install pkgconfiglite cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
+          # Update vcpkg to latest to avoid stale cmake version references
+          cd C:\vcpkg
+          git pull
+          .\bootstrap-vcpkg.bat
+          cd $env:GITHUB_WORKSPACE
           vcpkg install ffmpeg[x264,gpl]:x64-windows-static
           vcpkg integrate install
 

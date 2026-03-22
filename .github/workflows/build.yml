@@ -220,7 +220,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\vcpkg\installed
-          key: vcpkg-ffmpeg-win64-static-v2
+          key: vcpkg-ffmpeg-win64-static-v3
 
       - name: Install FFmpeg via vcpkg (Windows)
         if: matrix.platform == 'windows-latest'
@@ -235,14 +235,15 @@ jobs:
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          $vcpkgRoot = "C:\vcpkg\installed\x64-windows-static"
-          # Do NOT set FFMPEG_DIR — it bypasses vcpkg detection in ffmpeg-sys-next
-          # Instead, let vcpkg-rs find FFmpeg automatically via VCPKG_ROOT
-          echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
-          echo "VCPKGRS_TRIPLET=x64-windows-static" >> $env:GITHUB_ENV
-          echo "VCPKGRS_DYNAMIC=0" >> $env:GITHUB_ENV
-          # Our build.rs needs FFMPEG_STATIC to link x264
+          $prefix = "C:\vcpkg\installed\x64-windows-static"
+          echo "FFMPEG_DIR=$prefix" >> $env:GITHUB_ENV
+          echo "PKG_CONFIG_PATH=$prefix\lib\pkgconfig" >> $env:GITHUB_ENV
           echo "FFMPEG_STATIC=1" >> $env:GITHUB_ENV
+          # Verify installation
+          Write-Host "=== Checking vcpkg FFmpeg installation ==="
+          Get-ChildItem "$prefix\lib\*.lib" | Select-Object Name
+          Get-ChildItem "$prefix\include" -Directory | Select-Object Name
+          if (Test-Path "$prefix\lib\pkgconfig") { Get-ChildItem "$prefix\lib\pkgconfig\*.pc" | Select-Object Name }
 
       # ── Build app ──────────────────────────────────────────────
       - name: Install frontend dependencies

@@ -459,7 +459,41 @@ fn setup_global_shortcuts(app: &tauri::App) -> Result<(), Box<dyn std::error::Er
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::init();
+    // Log to stderr (as before) + log file on Desktop (errors & warnings only)
+    {
+        use env_logger::Builder;
+        use log::LevelFilter;
+        use std::io::Write;
+
+        let log_path = dirs::desktop_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("effective-recorder.log");
+        let log_file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)
+            .ok();
+
+        Builder::new()
+            .filter_level(LevelFilter::Info)
+            .format(move |buf, record| {
+                let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+                let line = format!("[{}] {} - {}: {}\n", ts, record.level(), record.target(), record.args());
+                // Always write to stderr
+                let _ = buf.write_all(line.as_bytes());
+                // Write warnings and errors to Desktop log file
+                if record.level() <= log::Level::Warn {
+                    if let Some(ref file) = log_file {
+                        use std::io::Write as _;
+                        let _ = (&*file).write_all(line.as_bytes());
+                    }
+                }
+                Ok(())
+            })
+            .init();
+
+        info!("Log file: {}", log_path.display());
+    }
 
     let settings_mgr = SettingsManager::new();
     let history_mgr = HistoryManager::new();

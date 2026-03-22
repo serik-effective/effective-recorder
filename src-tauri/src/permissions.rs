@@ -1,3 +1,4 @@
+#[cfg(target_os = "macos")]
 use log::info;
 
 /// Check if screen recording ACTUALLY works by doing a test capture

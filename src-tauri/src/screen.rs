@@ -53,14 +53,6 @@ fn capture_xcap(monitor: &Monitor) -> Result<(Vec<u8>, u32, u32)> {
     Ok((data, width, height))
 }
 
-/// Wrapper to send Monitor across threads on Windows/Linux.
-/// Safety: Monitor handle (HMONITOR) is valid for the lifetime of the recording
-/// and is only used for capture (read-only) from a single thread.
-#[cfg(not(target_os = "macos"))]
-struct SendMonitor(Monitor);
-#[cfg(not(target_os = "macos"))]
-unsafe impl Send for SendMonitor {}
-
 #[allow(dead_code)]
 pub struct VideoFrame {
     pub data: Vec<u8>,
@@ -156,88 +148,141 @@ impl ScreenCapture {
         let fps = self.fps;
 
         #[cfg(target_os = "macos")]
-        let display_id = self.monitor.id().unwrap_or(0);
+        {
+            let display_id = self.monitor.id().unwrap_or(0);
+            thread::spawn(move || {
+                Self::capture_loop_macos(display_id, fps, is_recording, sender, start_time);
+            })
+        }
+
         #[cfg(not(target_os = "macos"))]
-        let monitor = SendMonitor(self.monitor.clone());
+        {
+            // Safety: Monitor (HMONITOR) is a system handle that remains valid for the
+            // lifetime of the recording. We only use it for read-only capture from a single thread.
+            let monitor = self.monitor.clone();
+            let monitor_ptr = Box::into_raw(Box::new(monitor));
+            let raw = monitor_ptr as usize; // usize is Send
+            thread::spawn(move || {
+                // Safety: we own this pointer, reconstructing it exactly once
+                let monitor = unsafe { *Box::from_raw(raw as *mut Monitor) };
+                Self::capture_loop_xcap(&monitor, fps, is_recording, sender, start_time);
+            })
+        }
+    }
 
-        thread::spawn(move || {
-            let frame_duration = Duration::from_nanos(1_000_000_000 / fps as u64);
-            let mut frame_count: u64 = 0;
-            let mut last_log = Instant::now();
-            let mut capture_time_total = Duration::ZERO;
-            let mut send_time_total = Duration::ZERO;
-            let mut sleep_time_total = Duration::ZERO;
+    #[cfg(target_os = "macos")]
+    fn capture_loop_macos(
+        display_id: objc2_core_graphics::CGDirectDisplayID,
+        fps: u32,
+        is_recording: Arc<AtomicBool>,
+        sender: Sender<VideoFrame>,
+        start_time: Instant,
+    ) {
+        let frame_duration = Duration::from_nanos(1_000_000_000 / fps as u64);
+        let mut frame_count: u64 = 0;
+        let mut last_log = Instant::now();
+        let mut capture_time_total = Duration::ZERO;
+        let mut send_time_total = Duration::ZERO;
+        let mut sleep_time_total = Duration::ZERO;
 
-            #[cfg(target_os = "macos")]
-            info!("Fast display capture started (CGDisplayCreateImage, target {} FPS)", fps);
-            #[cfg(not(target_os = "macos"))]
-            info!("Screen capture started (xcap, target {} FPS)", fps);
+        info!("Fast display capture started (CGDisplayCreateImage, target {} FPS)", fps);
 
-            while is_recording.load(Ordering::Relaxed) {
-                let loop_start = Instant::now();
+        while is_recording.load(Ordering::Relaxed) {
+            let loop_start = Instant::now();
+            let t0 = Instant::now();
+            let capture_result = capture_display_fast(display_id);
 
-                let t0 = Instant::now();
-
-                #[cfg(target_os = "macos")]
-                let capture_result = capture_display_fast(display_id);
-                #[cfg(not(target_os = "macos"))]
-                let capture_result = capture_xcap(&monitor.0);
-
-                match capture_result {
-                    Ok((data, width, height)) => {
-                        let capture_dur = t0.elapsed();
-                        capture_time_total += capture_dur;
-
-                        let timestamp_us = start_time.elapsed().as_micros() as i64;
-
-                        let frame = VideoFrame {
-                            data,
-                            width,
-                            height,
-                            timestamp_us,
-                        };
-
-                        let t_send = Instant::now();
-                        if sender.send(frame).is_err() {
-                            break;
-                        }
-                        send_time_total += t_send.elapsed();
-
-                        frame_count += 1;
-
-                        if last_log.elapsed() >= Duration::from_secs(2) {
-                            let total_elapsed = start_time.elapsed().as_secs_f64();
-                            info!(
-                                "CAPTURE DIAG: {:.1} fps | capture={:.0}ms send={:.0}ms sleep={:.0}ms ({}x{}, {:.1}s)",
-                                frame_count as f64 / total_elapsed,
-                                capture_time_total.as_millis() as f64 / frame_count as f64,
-                                send_time_total.as_millis() as f64 / frame_count as f64,
-                                sleep_time_total.as_millis() as f64 / frame_count as f64,
-                                width, height,
-                                total_elapsed
-                            );
-                            last_log = Instant::now();
-                        }
-                    }
-                    Err(e) => {
-                        error!("Capture failed: {}", e);
+            match capture_result {
+                Ok((data, width, height)) => {
+                    capture_time_total += t0.elapsed();
+                    let timestamp_us = start_time.elapsed().as_micros() as i64;
+                    let frame = VideoFrame { data, width, height, timestamp_us };
+                    let t_send = Instant::now();
+                    if sender.send(frame).is_err() { break; }
+                    send_time_total += t_send.elapsed();
+                    frame_count += 1;
+                    if last_log.elapsed() >= Duration::from_secs(2) {
+                        let total_elapsed = start_time.elapsed().as_secs_f64();
+                        info!(
+                            "CAPTURE DIAG: {:.1} fps | capture={:.0}ms send={:.0}ms sleep={:.0}ms ({}x{}, {:.1}s)",
+                            frame_count as f64 / total_elapsed,
+                            capture_time_total.as_millis() as f64 / frame_count as f64,
+                            send_time_total.as_millis() as f64 / frame_count as f64,
+                            sleep_time_total.as_millis() as f64 / frame_count as f64,
+                            width, height, total_elapsed
+                        );
+                        last_log = Instant::now();
                     }
                 }
-
-                // Precise frame pacing: sleep for bulk of wait, then spin-wait for accuracy
-                let remaining = frame_duration.saturating_sub(loop_start.elapsed());
-                if remaining > Duration::from_millis(2) {
-                    let t_sleep = Instant::now();
-                    thread::sleep(remaining - Duration::from_millis(2));
-                    sleep_time_total += t_sleep.elapsed();
-                }
-                // Spin-wait for the last ~2ms for precise timing
-                while loop_start.elapsed() < frame_duration {
-                    std::hint::spin_loop();
-                }
+                Err(e) => { error!("Capture failed: {}", e); }
             }
 
-            info!("Capture stopped. Total frames: {}", frame_count);
-        })
+            let remaining = frame_duration.saturating_sub(loop_start.elapsed());
+            if remaining > Duration::from_millis(2) {
+                let t_sleep = Instant::now();
+                thread::sleep(remaining - Duration::from_millis(2));
+                sleep_time_total += t_sleep.elapsed();
+            }
+            while loop_start.elapsed() < frame_duration { std::hint::spin_loop(); }
+        }
+        info!("Capture stopped. Total frames: {}", frame_count);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn capture_loop_xcap(
+        monitor: &Monitor,
+        fps: u32,
+        is_recording: Arc<AtomicBool>,
+        sender: Sender<VideoFrame>,
+        start_time: Instant,
+    ) {
+        let frame_duration = Duration::from_nanos(1_000_000_000 / fps as u64);
+        let mut frame_count: u64 = 0;
+        let mut last_log = Instant::now();
+        let mut capture_time_total = Duration::ZERO;
+        let mut send_time_total = Duration::ZERO;
+        let mut sleep_time_total = Duration::ZERO;
+
+        info!("Screen capture started (xcap, target {} FPS)", fps);
+
+        while is_recording.load(Ordering::Relaxed) {
+            let loop_start = Instant::now();
+            let t0 = Instant::now();
+            let capture_result = capture_xcap(monitor);
+
+            match capture_result {
+                Ok((data, width, height)) => {
+                    capture_time_total += t0.elapsed();
+                    let timestamp_us = start_time.elapsed().as_micros() as i64;
+                    let frame = VideoFrame { data, width, height, timestamp_us };
+                    let t_send = Instant::now();
+                    if sender.send(frame).is_err() { break; }
+                    send_time_total += t_send.elapsed();
+                    frame_count += 1;
+                    if last_log.elapsed() >= Duration::from_secs(2) {
+                        let total_elapsed = start_time.elapsed().as_secs_f64();
+                        info!(
+                            "CAPTURE DIAG: {:.1} fps | capture={:.0}ms send={:.0}ms sleep={:.0}ms ({}x{}, {:.1}s)",
+                            frame_count as f64 / total_elapsed,
+                            capture_time_total.as_millis() as f64 / frame_count as f64,
+                            send_time_total.as_millis() as f64 / frame_count as f64,
+                            sleep_time_total.as_millis() as f64 / frame_count as f64,
+                            width, height, total_elapsed
+                        );
+                        last_log = Instant::now();
+                    }
+                }
+                Err(e) => { error!("Capture failed: {}", e); }
+            }
+
+            let remaining = frame_duration.saturating_sub(loop_start.elapsed());
+            if remaining > Duration::from_millis(2) {
+                let t_sleep = Instant::now();
+                thread::sleep(remaining - Duration::from_millis(2));
+                sleep_time_total += t_sleep.elapsed();
+            }
+            while loop_start.elapsed() < frame_duration { std::hint::spin_loop(); }
+        }
+        info!("Capture stopped. Total frames: {}", frame_count);
     }
 }

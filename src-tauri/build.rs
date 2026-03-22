@@ -33,8 +33,28 @@ fn main() {
 
         #[cfg(target_os = "windows")]
         {
+            // x264
+            println!("cargo:rustc-link-lib=static=libx264");
+            // Windows system libs required by static FFmpeg
             println!("cargo:rustc-link-lib=bcrypt");
             println!("cargo:rustc-link-lib=secur32");
+            // Media Foundation (mfenc, mf_utils)
+            println!("cargo:rustc-link-lib=mfplat");
+            println!("cargo:rustc-link-lib=mfuuid");
+            println!("cargo:rustc-link-lib=mf");
+            // DirectShow (dshow)
+            println!("cargo:rustc-link-lib=strmiids");
+            println!("cargo:rustc-link-lib=ole32");
+            println!("cargo:rustc-link-lib=oleaut32");
+            println!("cargo:rustc-link-lib=uuid");
+            // Network/WinSock (for rtmp/network protocols)
+            println!("cargo:rustc-link-lib=ws2_32");
+            // Other system libs
+            println!("cargo:rustc-link-lib=user32");
+            println!("cargo:rustc-link-lib=gdi32");
+            println!("cargo:rustc-link-lib=vfw32");
+            println!("cargo:rustc-link-lib=shlwapi");
+            println!("cargo:rustc-link-lib=advapi32");
         }
     }
 

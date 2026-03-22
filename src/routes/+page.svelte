@@ -391,6 +391,18 @@
 
   async function startTranscription(path) {
     try {
+      // Check if Whisper model is available; download if not
+      const modelReady = await invoke("is_whisper_model_available").catch(() => false);
+      if (!modelReady) {
+        // Start download and wait for it to finish
+        await downloadModel();
+        // Re-check after download
+        const readyNow = await invoke("is_whisper_model_available").catch(() => false);
+        if (!readyNow) {
+          errorMsg = "Whisper model download failed. Please try again.";
+          return;
+        }
+      }
       await invoke("transcribe_recording", { path });
       await loadTranscriptionQueue();
       await loadHistory();
@@ -399,6 +411,15 @@
 
   async function retryTranscription(path) {
     try {
+      const modelReady = await invoke("is_whisper_model_available").catch(() => false);
+      if (!modelReady) {
+        await downloadModel();
+        const readyNow = await invoke("is_whisper_model_available").catch(() => false);
+        if (!readyNow) {
+          errorMsg = "Whisper model download failed. Please try again.";
+          return;
+        }
+      }
       await invoke("retry_transcription", { path });
       await loadTranscriptionQueue();
       await loadHistory();

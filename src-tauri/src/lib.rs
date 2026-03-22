@@ -493,6 +493,26 @@ pub fn run() {
             .init();
 
         info!("Log file: {}", log_path.display());
+
+        // Catch panics (crashes) and write them to the log file too
+        let crash_log_path = log_path.clone();
+        std::panic::set_hook(Box::new(move |panic_info| {
+            let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+            let location = panic_info.location().map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column())).unwrap_or_default();
+            let message = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+                s.to_string()
+            } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "Unknown panic".to_string()
+            };
+            let crash_line = format!("[{}] CRASH PANIC at {}: {}\n", ts, location, message);
+            eprintln!("{}", crash_line.trim());
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&crash_log_path) {
+                use std::io::Write as _;
+                let _ = f.write_all(crash_line.as_bytes());
+            }
+        }));
     }
 
     let settings_mgr = SettingsManager::new();

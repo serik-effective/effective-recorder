@@ -221,6 +221,7 @@ jobs:
         with:
           path: C:\vcpkg\installed
           key: vcpkg-ffmpeg-win64-static-v3
+          save-always: true
 
       - name: Install FFmpeg via vcpkg (Windows)
         if: matrix.platform == 'windows-latest'

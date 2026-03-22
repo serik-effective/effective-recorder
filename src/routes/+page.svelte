@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { open } from "@tauri-apps/plugin-dialog";
+  import { getVersion } from "@tauri-apps/api/app";
   import { onMount, onDestroy } from "svelte";
 
   // ── State ──────────────────────────────────────────────────────
@@ -49,6 +50,11 @@
   let modelDownloadPercent = $state(0);
   let showCloseWarning = $state(false);
   let showModelPrompt = $state(false);
+
+  // Version & updates
+  let appVersion = $state("");
+  let updateAvailable = $state(null); // null = not checked, false = up to date, string = new version
+  let checkingUpdate = $state(false);
 
   // Camera
   let cameraDevices = $state([]);
@@ -353,6 +359,27 @@
     whisperModelAvailable = await invoke("is_whisper_model_available").catch(() => false);
   }
 
+  async function checkForUpdates() {
+    checkingUpdate = true;
+    try {
+      const res = await fetch("https://api.github.com/repos/serik-effective/effective-recorder/releases/latest");
+      if (res.ok) {
+        const data = await res.json();
+        const latest = data.tag_name?.replace(/^v/, "") || "";
+        if (latest && latest !== appVersion) {
+          updateAvailable = { version: latest, url: data.html_url };
+        } else {
+          updateAvailable = false;
+        }
+      } else {
+        updateAvailable = false;
+      }
+    } catch (_) {
+      updateAvailable = false;
+    }
+    checkingUpdate = false;
+  }
+
   async function downloadModel() {
     modelDownloading = true;
     modelDownloadPercent = 0;
@@ -486,6 +513,9 @@
 
     await checkWhisperModel();
     await loadTranscriptionQueue();
+
+    // Load app version
+    try { appVersion = await getVersion(); } catch (_) { appVersion = "?"; }
 
     // Enumerate camera devices
     try {
@@ -1099,6 +1129,26 @@
       </div>
     </div>
   {/if}
+
+  <!-- ═══ VERSION FOOTER ═══ -->
+  <div class="version-footer">
+    {#if updateAvailable && updateAvailable.url}
+      <a class="update-link" href={updateAvailable.url} target="_blank">
+        Update available: v{updateAvailable.version}
+      </a>
+    {:else if updateAvailable === false}
+      <span class="up-to-date">Up to date</span>
+    {/if}
+    <span class="version-text">
+      {#if checkingUpdate}
+        Checking...
+      {:else}
+        <button class="check-update-btn" onclick={checkForUpdates}>Check for updates</button>
+        &middot;
+      {/if}
+      v{appVersion}
+    </span>
+  </div>
 </div>
 
 <style>
@@ -1964,5 +2014,46 @@
     word-break: break-word;
     max-height: 55vh;
   }
+
+  /* ── Version Footer ────────────────────────────────────── */
+  .version-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    font-size: 11px;
+    color: #64748b;
+    background: rgba(15, 22, 35, 0.9);
+    border-top: 1px solid #1e293b;
+    z-index: 50;
+  }
+  .version-text {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .check-update-btn {
+    background: none;
+    border: none;
+    color: #64748b;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+  }
+  .check-update-btn:hover { color: #94a3b8; }
+  .update-link {
+    color: #38bdf8;
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .update-link:hover { text-decoration: underline; }
+  .up-to-date { color: #4ade80; }
 
 </style>

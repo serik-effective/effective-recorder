@@ -359,15 +359,32 @@
     whisperModelAvailable = await invoke("is_whisper_model_available").catch(() => false);
   }
 
+  function compareVersions(a, b) {
+    const pa = a.split(".").map(Number);
+    const pb = b.split(".").map(Number);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      const na = pa[i] || 0, nb = pb[i] || 0;
+      if (na > nb) return 1;
+      if (na < nb) return -1;
+    }
+    return 0;
+  }
+
   async function checkForUpdates() {
     checkingUpdate = true;
     try {
-      const res = await fetch("https://api.github.com/repos/serik-effective/effective-recorder/releases/latest");
+      // Use /releases (not /releases/latest) to include prereleases
+      const res = await fetch("https://api.github.com/repos/serik-effective/effective-recorder/releases?per_page=5");
       if (res.ok) {
-        const data = await res.json();
-        const latest = data.tag_name?.replace(/^v/, "") || "";
-        if (latest && latest !== appVersion) {
-          updateAvailable = { version: latest, url: data.html_url };
+        const releases = await res.json();
+        const newest = releases.find(r => r.tag_name?.startsWith("v"));
+        if (newest) {
+          const latest = newest.tag_name.replace(/^v/, "");
+          if (compareVersions(latest, appVersion) > 0) {
+            updateAvailable = { version: latest, url: newest.html_url };
+          } else {
+            updateAvailable = false;
+          }
         } else {
           updateAvailable = false;
         }
@@ -1169,6 +1186,7 @@
     height: 100vh;
     width: 100vw;
     overflow: hidden;
+    padding-bottom: 20px;
   }
 
   /* ── Permission Banner ───────────────────────────────────── */
@@ -2025,12 +2043,13 @@
     justify-content: flex-end;
     align-items: center;
     gap: 8px;
-    padding: 4px 12px;
-    font-size: 11px;
+    padding: 2px 12px;
+    font-size: 10px;
     color: #64748b;
     background: rgba(15, 22, 35, 0.9);
     border-top: 1px solid #1e293b;
     z-index: 50;
+    pointer-events: auto;
   }
   .version-text {
     display: flex;
@@ -2041,7 +2060,7 @@
     background: none;
     border: none;
     color: #64748b;
-    font-size: 11px;
+    font-size: 10px;
     cursor: pointer;
     padding: 0;
     text-decoration: underline;

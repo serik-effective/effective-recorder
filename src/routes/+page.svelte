@@ -1414,6 +1414,7 @@
     align-items: center;
     justify-content: center;
     padding: 14px 20px;
+    padding-bottom: 28px;
     border-top: 1px solid #1e293b;
     flex-shrink: 0;
     gap: 0;

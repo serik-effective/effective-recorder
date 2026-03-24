@@ -321,9 +321,13 @@ pub fn transcribe(
         let end = state
             .full_get_segment_t1(i)
             .map_err(|e| anyhow::anyhow!("Failed to get segment end: {}", e))?;
-        let text = state
-            .full_get_segment_text(i)
-            .map_err(|e| anyhow::anyhow!("Failed to get segment text: {}", e))?;
+        let text = match state.full_get_segment_text(i) {
+            Ok(t) => t,
+            Err(e) => {
+                log::warn!("Skipping segment {} due to text extraction error (likely mixed-language UTF-8): {}", i, e);
+                continue;
+            }
+        };
 
         segments.push(Segment {
             start_ms: start as i64 * 10, // whisper returns centiseconds
